@@ -146,14 +146,12 @@ setを用いた場合は毎度環境が戻されるので、１から変わら�
 (define (if-fail? exp) (tagged-list? exp 'if-fail))
 
 (define (analyze-if-fail exp)
-  (let ((proc (analyze (cadr exp)))
+  (let ((success-proc (analyze (cadr exp)))
         (fail-proc (analyze (caddr exp))))
     (lambda (env succeed fail)
-      (proc env succeed
+      (success-proc env succeed
             (lambda ()
-              (announce-output output-prompt)
-              (user-print (fail-proc env succeed fail))
-              (driver-loop))))))
+              (fail-proc env succeed fail))))))
 ```
 
 
