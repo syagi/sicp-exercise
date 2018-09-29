@@ -139,6 +139,11 @@ wheelの定義
 (rule ((great . ?rel) ?x ?y)
       (and (son ?x ?w)
          (?rel ?w ?y)))
+
+(rule ((great . ?rel) ?x ?y)
+      (and (sun ?x ?z)
+           (?rel ?z ?y)))
 ```
+
 
 チェックは動かせる実装がないのでスキップ
