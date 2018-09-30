@@ -68,12 +68,12 @@ Louisの定義
        (disjoin (rest-disjuncts disjuncts) frame-stream))))
 ```
 
-差分は、 stream-append-delaye / interleave-delayed を使うか否か。
-遅延を使わない場合、全ての結果が演算された後にならないと、結果が出力されない。
+差分は、 stream-append-delaye / interleave-delayed を使うか否か。  
+遅延を使わない場合、全ての結果が演算された後にならないと、結果が出力されない。  
 
-遅延がないことで問題になるのは、無限ループになる質問。
-遅延がある場合、逐次評価結果が出力される（終了はしない）
-遅延がない場合は、評価結果が出力されない。
+遅延がないことで問題になるのは、無限ループになる質問。  
+遅延がある場合、逐次評価結果が出力される（終了はしない）  
+遅延がない場合は、評価結果が出力されない。  
 
 
 # 4.72
@@ -106,6 +106,7 @@ interleaveは二つのストリームから要素を交互にとるので,
 ```
 
 要は、 flatten-stream を遅延評価する必要性。
+
 flatten stream の引数は、streamなので、
 無限ストリームでも評価が逐次行われるようにするため。
 （ 4.71と同じ）
@@ -208,6 +209,50 @@ Alyssaの変更
 
 (put 'and 'qeval conjoin)
 
+```
+
+勉強会で議論した別解
+
+```
+(define (conjoin conjuncts frame-stream)
+  (if (empty-conjunction? conjuncts)
+      frame-stream
+      (merge-frame-streams
+        (qeval (first-conjunct conjuncts) frame-stream)
+        (conjoin (rest-conjuncts conjuncts) frame-stream))))
+
+(define (merge-frame-streams s1 s2)
+  (stream-flatmap
+     (lambda (f1)
+       (stream-flatmap
+         (lambda (f2)
+            (let ((result (merge-flames f1 f2)))
+               (if (eq? result 'failed)
+                   the-empty-stream
+                   result))
+            s2))
+        s1)))
+
+(define (merge-frames f1 f2)
+  (cond
+     ((eq? f2 'failed) 'failed)
+     ((null? f1) f2)
+     (else
+       (unify-frame-match
+         (cdr f1)
+         (unify-binding-frame (car f1) f2)))))
+
+(define (unify-binding-frame b f)
+  (let
+     ((binding
+        (binding-in-frame (binding-variable b) f)))
+     (if binding
+         (if (equal? (binding-value b) (binding-value binding))
+             f
+             'failed)
+         (cons b f))))
+
+(put 'and 'qeval conjoin)
 ```
 
 # 4.77
