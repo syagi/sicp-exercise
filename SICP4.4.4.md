@@ -259,7 +259,9 @@ Alyssaの変更
 さっぱり分からず。
 カンニングしつつ解釈すると、
 notの実行を後回しにして、他の演算によって変数が束縛されるのを待つ、ということ？
+
 http://wat-aro.hatenablog.com/entry/2016/01/21/181839
+
 http://himoiku.cocolog-nifty.com/blog/2008/03/sicp477_db0f.html
 
 
