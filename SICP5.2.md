@@ -314,3 +314,173 @@ make-new-machineの中の lookup-register を修正
           (allocate-register name)
           (lookup-register name)))))
 ```
+
+# 5.14
+全体は 5.14.rkt
+
+試しに動かしてみると
+```
+(define fact-machine
+  (make-machine
+    (list (list '= =) (list '- -) (list '* *))
+    '(start
+       (assign continue (label fact-done))
+  fact-loop
+    (test (op =) (reg n) (const 1))
+    (branch (label base-case))
+    (save continue)
+    (save n)
+    (assign n (op -) (reg n) (const 1))
+    (assign continue (label after-fact))
+    (goto (label fact-loop))
+  after-fact
+    (restore n)
+    (restore continue)
+    (assign val (op *) (reg n) (reg val))
+    (goto (reg continue))
+  base-case
+    (assign val (const 1))
+    (goto (reg continue))
+  fact-done)))
+
+(define (fact n)
+  ((fact-machine 'stack) 'initialize)
+  (set-register-contents! fact-machine 'n n)
+  (start fact-machine)
+  (display n)
+  (newline)
+  (display (get-register-contents fact-machine 'val))
+  ((fact-machine 'stack) 'print-statistics)
+  (newline))
+
+(define (print-fact-stack n)
+  (define (iter k)
+    (if (< k n)
+        (begin
+          (fact k)
+          (iter (+ k 1)))))
+  (iter 1))
+
+(print-fact-stack 10)
+```
+
+実行結果は
+```
+1
+1
+(total-pushes = 0 maximum-depth = 0)
+2
+2
+(total-pushes = 2 maximum-depth = 2)
+3
+6
+(total-pushes = 4 maximum-depth = 4)
+4
+24
+(total-pushes = 6 maximum-depth = 6)
+5
+120
+(total-pushes = 8 maximum-depth = 8)
+6
+720
+(total-pushes = 10 maximum-depth = 10)
+7
+5040
+(total-pushes = 12 maximum-depth = 12)
+8
+40320
+(total-pushes = 14 maximum-depth = 14)
+9
+362880
+(total-pushes = 16 maximum-depth = 16)
+```
+
+よって、
+```
+push回数=最大深さ=(n-1)*2
+```
+
+問題文後半が何を言いたいのかよく分からなかったが、上記に定義した fact のような手続きを言うのだろうか？
+
+# 5.15
+全体は 5.15.rkt
+
+```
+(define (make-new-machine)
+  (let ((pc (make-register 'pc))
+..
+        (instruction-count 0) ;;ADD
+        (the-instruction-sequence '()))
+..
+      (define (execute)
+        (let ((insts (get-contents pc)))
+          (if (null? insts)
+              'done
+              (begin
+                ((instruction-execution-proc (car insts)))
+                (set! instruction-count (+ 1 instruction-count)) ;;ADD
+                (execute)))))
+      (define (get-instruction-count) instruction-count)
+      (define (initialize-instruction-count) (set! instruction-count 0)) ;ADD
+      (define (dispatch message)
+        (cond ((eq? message 'start)
+..
+              ((eq? message 'get-instruction-count) ;;ADD
+                 (let ((inst-count (get-instruction-count)))
+                     (initialize-instruction-count)
+                     inst-count))
+              ((eq? message 'initialize-instruction-count) ;;ADD
+                 (initialize-instruction-count))
+              (else (error "Unknown request -- MACHINE" message))))
+      dispatch)))
+
+(define (get-instruction-counting machine)
+  (machine 'get-instruction-count))
+
+(define (initialize-instruction-counting machine)
+  (machine 'initialize-instruction-count))
+```
+
+# 5.16
+
+全体は 5.16.rkt
+
+```
+(define (make-new-machine)
+  (let ((pc (make-register 'pc))
+        ..
+        (instruction-trace #f) ;;ADD
+        (the-instruction-sequence '()))
+..
+      (define (execute)
+        (let ((insts (get-contents pc)))
+          (if (null? insts)
+              'done
+              (begin
+                (if instruction-trace ;;ADD
+                    (begin
+                      (display (caar insts))
+                      (newline)))
+                ((instruction-execution-proc (car insts)))
+                (set! instruction-count (+ 1 instruction-count))
+                (execute)))))
+..
+      (define (set-instruction-trace flag) (set! instruction-trace flag))
+      (define (dispatch message)
+        (cond ((eq? message 'start)
+..
+              ((eq? message 'trace-on) (set-instruction-trace #t))
+              ((eq? message 'trace-off) (set-instruction-trace #f))
+              (else (error "Unknown request -- MACHINE" message))))
+      dispatch)))
+```
+
+# 5.17
+
+全体は 5.17.rkt
+
+# 5.18
+全体は 5.18.rkt
+
+# 5.19
+全体は 5.19.rkt

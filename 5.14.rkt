@@ -27,24 +27,40 @@
 
 ;;スタック
 (define (make-stack)
-  (let ((s '()))
+  (let ((s '())
+        (number-pushes 0)
+        (max-depth 0)
+        (current-depth 0))
     (define (push x)
-      (set! s (cons x s)))
+      (set! s (cons x s))
+      (set! number-pushes (+ 1 number-pushes))
+      (set! current-depth (+ 1 current-depth))
+      (set! max-depth (max current-depth max-depth)))
     (define (pop)
       (if (null? s)
           (error "Empty stack -- POP")
           (let ((top (car s)))
             (set! s (cdr s))
-            top)))
+            (set! current-depth (- current-depth 1))
+            top)))    
     (define (initialize)
       (set! s '())
+      (set! number-pushes 0)
+      (set! max-depth 0)
+      (set! current-depth 0)
       'done)
+    (define (print-statistics)
+      (newline)
+      (display (list 'total-pushes  '= number-pushes
+                     'maximum-depth '= max-depth)))
     (define (dispatch message)
       (cond ((eq? message 'push) push)
             ((eq? message 'pop) (pop))
             ((eq? message 'initialize) (initialize))
-            (else (error "Unknown request -- STACK"
-                         message))))
+            ((eq? message 'print-statistics)
+             (print-statistics))
+            (else
+             (error "Unknown request -- STACK" message))))
     dispatch))
 
 (define (pop stack)
@@ -59,11 +75,12 @@
   (let ((pc (make-register 'pc))
         (flag (make-register 'flag))
         (stack (make-stack))
-        (analyzer (make-analyzer)) ;; ADD
         (the-instruction-sequence '()))
     (let ((the-ops
            (list (list 'initialize-stack
-                       (lambda () (stack 'initialize)))))
+                       (lambda () (stack 'initialize)))
+                 (list 'print-stack-statistics
+                       (lambda () (stack 'print-statistics)))))
           (register-table
            (list (list 'pc pc) (list 'flag flag))))
       (define (allocate-register name)
@@ -75,11 +92,11 @@
         'register-allocated)
       (define (lookup-register name)
         (let ((val (assoc name register-table)))
-          (if val
-              (cadr val)
-              (begin
-                (allocate-register name)
-                (lookup-register name)))))
+           (if val
+               (cadr val)
+               (begin ;無ければregisterを追加して再度lookup
+                 (allocate-register name)
+                 (lookup-register name)))))
       (define (execute)
         (let ((insts (get-contents pc)))
           (if (null? insts)
@@ -99,7 +116,6 @@
                (lambda (ops) (set! the-ops (append the-ops ops))))
               ((eq? message 'stack) stack)
               ((eq? message 'operations) the-ops)
-              ((eq? message 'analyzer) analyzer) ;; ADD
               (else (error "Unknown request -- MACHINE" message))))
       dispatch)))
 
@@ -186,25 +202,18 @@
   (define (make-execution-procedure inst labels machine
                                   pc flag stack ops)
   (cond ((eq? (car inst) 'assign)
-         (add-analyzer inst machine 'assgin)
          (make-assign inst machine labels ops pc))
         ((eq? (car inst) 'test)
-         (add-analyzer inst machine 'test)
          (make-test inst machine labels ops flag pc))
         ((eq? (car inst) 'branch)
-         (add-analyzer inst machine 'branch)
          (make-branch inst machine labels flag pc))
         ((eq? (car inst) 'goto)
-         (add-analyzer inst machine 'goto)
          (make-goto inst machine labels pc))
         ((eq? (car inst) 'save)
-         (add-analyzer inst machine 'save)
          (make-save inst machine stack pc))
         ((eq? (car inst) 'restore)
-         (add-analyzer inst machine 'restore)         
          (make-restore inst machine stack pc))
         ((eq? (car inst) 'perform)
-         (add-analyzer inst machine 'perform)
          (make-perform inst machine labels ops pc))
         (else (error "Unknown instruction type -- ASSEMBLE"
                      inst))))
@@ -389,64 +398,45 @@
       (eq? (car exp) tag)
       false))
 
-
-;; 解析器
-(define (make-analyzer)
-  (let ((analyze-list '((assgin) (test) (branch) (goto) (save) (restore) (perform))))
-    (define (add-analyzer inst label)
-      (let (( analyzer (assoc label analyze-list)))
-        (if analyzer
-            (if (not (member inst analyzer))
-                (set-cdr! analyzer (cons inst (cdr analyzer)))))))
-    (define (print-analyzer) (print analyze-list))
-    (define (dispatch message)
-      (cond ((eq? message 'add) add-analyzer)
-            ((eq? message 'print) print-analyzer)
-            (else (error "Unkown message" message))))
-    dispatch))
-
-(define (print-analyzed-result machine)
-  (((machine 'analyzer) 'print)))
-
-(define (add-analyzer inst machine label)
-  (((machine 'analyzer) 'add) inst label))
-
-
-
-(define fib-machine
+(define fact-machine
   (make-machine
-    (list (list '< <) (list '- -) (list '+ +))
+    (list (list '= =) (list '- -) (list '* *))
     '(start
-       (assign continue (label fib-done))
-  fib-loop
-    (test (op <) (reg n) (const 2))
-    (branch (label immediate-answer))
+       (assign continue (label fact-done))
+  fact-loop
+    (test (op =) (reg n) (const 1))
+    (branch (label base-case))
     (save continue)
-    (assign continue (label afterfib-n-1))
     (save n)
     (assign n (op -) (reg n) (const 1))
-    (goto (label fib-loop))
-  afterfib-n-1
+    (assign continue (label after-fact))
+    (goto (label fact-loop))
+  after-fact
     (restore n)
     (restore continue)
-    (assign n (op -) (reg n) (const 2))
-    (save continue)
-    (assign continue (label afterfib-n-2))
-    (save val)
-    (goto (label fib-loop))
-  afterfib-n-2
-    (assign n (reg val))
-    (restore val)
-    (restore continue)
-    (assign val (op +) (reg val) (reg n))
+    (assign val (op *) (reg n) (reg val))
     (goto (reg continue))
-  immediate-answer
-    (assign val (reg n))
+  base-case
+    (assign val (const 1))
     (goto (reg continue))
-  fib-done)))
+  fact-done)))
 
-(set-register-contents! fib-machine 'n 10)
-(start fib-machine)
-(get-register-contents fib-machine 'val)
+(define (fact n)
+  ((fact-machine 'stack) 'initialize)
+  (set-register-contents! fact-machine 'n n)
+  (start fact-machine)
+  (display n)
+  (newline)
+  (display (get-register-contents fact-machine 'val))
+  ((fact-machine 'stack) 'print-statistics)
+  (newline))
 
-(print-analyzed-result fib-machine) ;; 解析結果を表示する
+(define (print-fact-stack n)
+  (define (iter k)
+    (if (< k n)
+        (begin
+          (fact k)
+          (iter (+ k 1)))))
+  (iter 1))
+
+(print-fact-stack 10)
