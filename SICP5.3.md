@@ -4,15 +4,17 @@
 (define x (cons 1 2))
 ```
 
-|index|0|1|2|
-|the-cars| |n1| |
-|the-cdrs| |n2| |
+| index | 0 | 1 | 2 |
+|----|----|----|----|
+| the-cars | | n1 | |
+| the-cdrs | | n2 | |
 
 ```
 (define y (list x x))
 ```
 
 |index|0|1|2|3|
+|----|----|----|----|----|
 |the-cars| |n1|p1|p1|
 |the-cdrs| |n2|p3|e0|
 
