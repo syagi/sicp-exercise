@@ -542,6 +542,7 @@
 (fact-machine 'trace-on)
 (set-breakpoint fact-machine 'base-case 1)
 (fact 3)
+;(cancel-breakpoint fact-machine 'base-case 1)
 ;(proceed-machine fact-machine)
 
 

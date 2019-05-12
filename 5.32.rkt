@@ -137,19 +137,19 @@
       (cond ((null? vars)
              (env-loop (enclosing-environment env)))
             ((eq? var (car vars))
-             (cons 'bound (car vals))) ;; changed
+             (cons 'bound (car vals)))
             (else (scan (cdr vars) (cdr vals)))))
     (if (eq? env the-empty-environment)
-        (cons 'unbound '()) ;; changed
+        (cons 'unbound '())
         (let ((frame (first-frame env)))
           (scan (frame-variables frame)
                 (frame-values frame)))))
   (env-loop env))
 
-(define (bounded? v-pair) ;;add
+(define (bounded? v-pair) 
   (and (pair? v-pair) (eq? (car v-pair) 'bound)))
 
-(define (bounded-value v-pair) ;;add
+(define (bounded-value v-pair) 
   (cdr v-pair))
 
 
@@ -621,8 +621,8 @@
         (list 'get-global-environment get-global-environment)
         (list 'announce-output announce-output)
         (list 'user-print user-print)
-        (list 'bounded? bounded?)  ;;add
-        (list 'bounded-value bounded-value)))  ;;add
+        (list 'bounded? bounded?) 
+        (list 'bounded-value bounded-value)))
   
 (define eceval
   (make-machine
@@ -683,17 +683,17 @@
       (assign val (reg exp))
       (goto (reg continue))
 
-    ev-variable  ;; changed
+    ev-variable
       (assign val (op lookup-variable-value) (reg exp) (reg env))
       (test (op bounded?) (reg val))
       (branch (label ev-bounded-value) (reg val))
       (goto (label unbounded))
 
-    ev-bounded-value ;;add
+    ev-bounded-value
       (assign val (op bounded-value) (reg val))
       (goto (reg continue))
 
-    unbounded ;;add 
+    unbounded
       (assign val (const unbounded-variable-error))
       (goto (label signal-error))
 
@@ -710,21 +710,30 @@
 
     ev-application
       (save continue)
-      (save env)
       (assign unev (op operands) (reg exp))
-      (save unev)
       (assign exp (op operator) (reg exp))
+      (test (op variable?) (reg exp)) ;; add
+      (branch (label ev-appl-symbol-operator)) ;; add
+      (save env)
+      (save unev)
       (assign continue (label ev-appl-did-operator))
       (goto (label eval-dispatch))
 
+    ev-appl-symbol-operator ;; add
+      (assgin continue (label ev-appl-did-symbol-operator))
+      (goto (label eval-dispatch))
+
     ev-appl-did-operator
-      (restore unev)                  ; 被演算子
+      (restore unev)
       (restore env)
+      
+    ev-appl-did-symbol-operator ;; add
       (assign argl (op empty-arglist))
-      (assign proc (reg val))         ; 演算子
+      (assign proc (reg val))
       (test (op no-operands?) (reg unev))
       (branch (label apply-dispatch))
       (save proc)
+      (goto (label ev-appl-operand-loop))
 
     ev-appl-operand-loop
       (save argl)
@@ -853,7 +862,7 @@
       (assign val (const ok))
       (goto (reg continue))
       
-    signal-error  ;;add
+    signal-error
       (perform (op user-print) (reg val))
       (goto (label read-eval-print-loop))
   

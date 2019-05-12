@@ -121,14 +121,16 @@
               (begin
                 (if instruction-trace
                     (begin
+                      (newline)
+                      (display "labe:")
+                      (display label)
+                      (display "  inst:")
                       (display (caar insts))
                       (newline)))
                 ((instruction-execution-proc (car insts)))
                 (if (label-exp? (caar insts))
-                    (set! label (cdaar insts))
-                    (begin
-                      (set! instruction-count (+ 1 instruction-count))
-                             (display (caar insts))))
+                      (set! label (cdaar insts))
+                      (set! instruction-count (+ 1 instruction-count)))
                 (set! instruction-count (+ 1 instruction-count))
                 (execute)))))
       (define (get-instruction-count) instruction-count)

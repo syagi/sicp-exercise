@@ -299,29 +299,25 @@ ok
 6
 
 ;;; EC-Eval input:
-(factorial 4
-)
+(factorial 4)
 (total-pushes = 120 maximum-depth = 35)
 ;;; EC-Eval value:
 24
 
 ;;; EC-Eval input:
-(factorial 5
-)
+(factorial 5)
 (total-pushes = 154 maximum-depth = 43)
 ;;; EC-Eval value:
 120
 
 ;;; EC-Eval input:
-(factorial 6
-)
+(factorial 6)
 (total-pushes = 188 maximum-depth = 51)
 ;;; EC-Eval value:
 720
 
 ;;; EC-Eval input:
-(factorial 10
-)
+(factorial 10)
 (total-pushes = 324 maximum-depth = 83)
 ;;; EC-Eval value:
 3628800
