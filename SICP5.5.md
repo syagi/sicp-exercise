@@ -613,3 +613,159 @@ after-call23
 
 https://wat-aro.hatenablog.com/entry/2016/02/08/173201
 ここ参考に作ろうとしたが挫折。。。
+
+# 5.39
+
+```
+(define (lexical-address-frame-number lexical-address)
+  (car lexical-address))
+
+(define (lexical-address-displacement-number lexical-address)
+  (cadr lexical-address))
+
+(define (make-lexical-address frame-number displacement-number)
+  (list frame-number displacement-number))
+
+(define (lexical-address-lookup lexical-address env)
+  (let ((frame-num (lexical-address-frame-number lexical-address))
+        (displacement-num (lexical-address-displacement-number lexical-address)))
+       (let ((frame (list-ref env frame-num)))
+             (let ((value (list-ref (frame-values frame) displacement-num)))
+                  (if (eq? value '*unassigned*)
+                      (error "Unassigned variable")
+                      value)))))
+
+(define (lexical-address-set! lexical-address val env)
+  (let ((frame-num (lexical-address-frame-number lexical-address))
+        (displacement-num (lexical-address-displacement-number lexical-address)))
+       (let ((frame (list-ref env frame-num)))
+             (define (iter vrs vls count)
+               (cond ((null? vrs)
+                      (error "Unbound variable - LEXICAL-ADDRESS-SET!"))
+                     ((= count 0)
+                      (set-car! vls val))
+                     (else
+                       (iter (cdr vrs) (cdr vls) (- count 1)))))
+             (iter (frame-variables frame) (frame-values frame) displacement-num))))
+```
+
+# 5.40
+
+全体は 5.40.rkt
+
+以下の関数に ct-env 引数を追加する。
+```
+compile
+compile-assingment
+compile-definition
+compile-if
+compile-lambda
+compile-sequence
+compile-application
+compile-lambda-body
+```
+
+ct-env は compile-labda-body で拡張する
+```
+
+(define (compile-lambda-body exp proc-entry ct-env) ;;changed
+  (let ((formals (lambda-parameters exp)))
+    (append-instruction-sequences
+     (make-instruction-sequence '(env proc argl) '(env)
+      `(,proc-entry
+        (assign env (op compiled-procedure-env) (reg proc))
+        (assign env
+                (op extend-environment)
+                (const ,formals)
+                (reg argl)
+                (reg env))))
+     (compile-sequence (lambda-body exp) 'val 'return (cons formals ct-env))))) ;;拡張
+```
+
+# 5.41
+```
+(define (find-variable var ct-env)
+  (define (frame-iter var frames frame-number)
+    (if (null? frames)
+        'not-found
+        (let ((addr (scan-iter var (car frames) frame-number 0)))
+             (if (null? addr)
+                 (frame-iter var (cdr frames) (+ frame-number 1))
+                 addr))))
+  (define (scan-iter var frame frame-number displacement-number)
+    (if (null? frame)
+        '()
+        (if (eq? var (car frame))
+            (make-lexical-address frame-number displacement-number)
+            (scan-iter var (cdr frame) frame-number (+ displacement-number 1)))))
+  (frame-iter var ct-env 0))
+```
+
+# 5.42
+```
+(define (compile-variable exp target linkage ct-env) ;; changed
+  (let ((addr (find-variable exp ct-env)))
+    (end-with-linkage linkage
+     (make-instruction-sequence
+       '(env)
+       (list target)
+       (if (eq? addr 'not-found)
+           `((assign ,target
+                     (op lookup-variable-value)
+                     (const ,exp)
+                     (reg env)))
+           `((assign ,target
+                     (op lookup-variable-value)
+                     (const ,addr)
+                     (reg env))))))))
+```
+
+```
+(define (compile-assignment exp target linkage ct-env)
+  (let ((var (assignment-variable exp))
+        (get-value-code
+         (compile (assignment-value exp) 'val 'next ct-env)))
+    (let ((addr (find-variable var ct-env))) ;; changed
+      (end-with-linkage
+        linkage
+        (preserving
+          '(env)
+          get-value-code
+          (make-instruction-sequence
+             '(env val)
+             (list target)
+             (if (eq? addr 'not-found)
+                 `((perform (op set-variable-value!)
+                            (const ,var)
+                            (reg val)
+                            (reg env))
+                   (assign ,target (const ok)))
+                 `((perform (op lexical-address-set!)
+                                 (const ,addr)
+                                 (reg val)
+                                 (reg env))
+                   (assign ,target (const ok))))))))))
+```
+
+# 5.43
+
+```
+(define (compile-lambda-body exp proc-entry ct-env)
+  (let ((formals (lambda-parameters exp)))
+    (append-instruction-sequences
+     (make-instruction-sequence '(env proc argl) '(env)
+      `(,proc-entry
+        (assign env (op compiled-procedure-env) (reg proc))
+        (assign env
+                (op extend-environment)
+                (const ,formals)
+                (reg argl)
+                (reg env))))
+     (compile-sequence
+      (scan-out-defines (lambda-body exp)) ;; changed
+      'val
+      'return
+      (cons formals ct-env)))))
+```
+
+# 5.44
