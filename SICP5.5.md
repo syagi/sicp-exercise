@@ -769,3 +769,433 @@ ct-env は compile-labda-body で拡張する
 ```
 
 # 5.44
+
+
+
+# 5.45
+
+## 数値比較
+
+(Total push , Max depth)
+
+|      | 翻訳(5.45) | 解釈(5.27)   | 特殊(5.14) |
+| ---- | ---------- | ------------ | ---------- |
+| 3    | 19, 8      | 80, 18       | 4, 4       |
+| 4    | 25, 11     | 112, 23      | 6, 6       |
+| 5    | 31, 14     | 144, 28      | 8, 8       |
+| 6    | 37, 17     | 176, 33      | 10, 10     |
+| 7    | 43, 20     | 208, 38      | 12, 12     |
+| 8    | 49, 23     | 240, 43      | 14, 14     |
+| n    | 6n+1, 3n-1 | 32n-16, 5n+3 | 2n-2, 2n-2 |
+
+## 比率
+
+nが十分大きくなれば定数項は無視できるので、 
+翻訳：解釈 は
+Total Push 6:32 = 3:16 
+Max depth 3:5 
+
+解釈：専用は
+Max depth 5:2
+
+
+
+# # 5.46
+
+
+
+```
+(compile-and-go
+'(define (fib n)
+  (if (< n 2)
+      n
+      (+ (fib (- n 1)) (fib (- n 2))))))
+```
+
+
+
+
+
+## 数値比較
+
+(Total push , Max depth)
+
+|      | 翻訳                 | 解釈                  |
+| ---- | -------------------- | --------------------- |
+| 3    | 27, 8                | 128, 18               |
+| 4    | 47, 11               | 240, 23               |
+| 5    | 77, 14               | 408, 28               |
+| 6    | 127, 17              | 688, 33               |
+| 7    | 207, 20              | 1136, 38              |
+| 8    | 337, 23              | 1864, 43              |
+| n    | 10*Fib(n+1)-3  ,3n-1 | 56*Fib(n+1)-40 , 5n+3 |
+
+# 5.47
+
+つまりこういうことと理解。
+
+コンパイル済みの関数から、未コンパイルの関数を呼べない
+
+```
+
+> (compile-and-go
+'(begin
+   (define (f n) (g n))
+   (define (g n) (+ n 1))
+ ))
+
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(f 1)
+
+;;; EC-Eval value:
+2
+
+;;; EC-Eval input:
+(g 1)
+
+;;; EC-Eval value:
+2
+
+;;; EC-Eval input:
+(define (g n) (+ n 2))
+
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(g 1)
+
+;;; EC-Eval value:
+3
+
+;;; EC-Eval input:
+(f 1)
+. . mcdr: contract violation
+  expected: mpair?
+  given: 'n
+```
+
+
+
+compile-proc-applを直す
+
+```
+(define (compile-procedure-call target linkage)
+  (let ((primitive-branch (make-label 'primitive-branch))
+        (compiled-branch (make-label 'compiled-branch))
+        (after-call (make-label 'after-call)))
+       (let ((compiled-linkage
+               (if (eq? linkage 'next) after-call linkage)))
+            (append-instruction-sequences
+              (make-instruction-sequence
+               '(proc) '()
+               `((test (op primitive-procedure?) (reg proc))
+                 (branch (label ,primitive-branch))))
+              (make-instruction-sequence ;add
+               '(proc) '()
+               `((test (op compiled-procedure?) (reg proc))
+                 (branch (label ,compiled-branch))))
+              ; composed-procedureに対する処理を追加
+              (parallel-instruction-sequences
+                (cond ((and (eq? target 'val)
+                            (not (eq? compiled-linkage 'return)))
+                       (make-instruction-sequence
+                        '(proc)all-regs
+                        `((assign continue (label ,compiled-linkage))
+                         (save continue)
+                         (goto (reg compapp)))))
+                      ((and (not (eq? target 'val))
+                            (not (eq? compiled-linkage 'return)))
+                       (let ((proc-return (make-label 'proc-return)))
+                            (make-instruction-sequence
+                             '(proc) all-regs
+                             `((assign continue (label ,proc-return))
+                               (save continue)
+                               (goto (reg compapp))
+                               ,proc-return
+                               (assign ,target (reg val))
+                               (goto (label ,compiled-linkage))))))
+                      ((and (eq? target 'val)
+                            (eq? compiled-linkage 'return))
+                       (make-instruction-sequence
+                         '(proc continue) all-regs
+                         '((save continue)
+                           (goto (reg compapp)))))
+                      ((and (not (eq? target 'val))
+                            (eq? compiled-linkage 'return))
+                       (error "return linkage, target not val -- COMPILE"
+                              target)))
+                  (append-instruction-sequences
+                    compiled-branch
+                    (compile-proc-appl target compiled-linkage)))
+              (parallel-instruction-sequences ;add
+                (append-instruction-sequences
+                   compiled-branch
+                   (compile-proc-appl target compiled-linkage))
+                (append-instruction-sequences
+                   primitive-branch
+                   (end-with-linkage
+                     linkage
+                     (make-instruction-sequence
+                       '(proc argl)
+                       (list target)
+                       `((assign ,target
+                                 (op apply-primitive-procedure)
+                                 (reg proc)
+                                 (reg argl)))))))
+              after-call))))
+```
+
+
+
+問題文の通り、compappレジスタについての記述を追加
+
+```
+(define eceval
+  (make-machine
+    '(exp env val proc argl continue unev compapp)
+    eceval-operations
+    '(
+      (assign compapp (label compound-apply))
+      (branch (label external-entry)) ; flag が設定してあれば分岐する
+...
+```
+
+
+
+実行結果
+
+コンパイルされた関数も、されてない関数も実行できるようになった
+
+```
+
+> (compile-and-go
+'(begin
+   (define (f n) (g n))
+   (define (g n) (+ n 1))
+ ))
+
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(g 1)
+
+;;; EC-Eval value:
+2
+
+;;; EC-Eval input:
+(f 1)
+
+;;; EC-Eval value:
+2
+
+;;; EC-Eval input:
+(define (g n) (+ n 2))
+
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(f 1)
+
+;;; EC-Eval value:
+3
+```
+
+
+
+# 5.48
+
+環境に compile-and-run を追加
+
+```
+;add
+(define (setup-c-and-r-environment)
+  (extend-environment
+    (list 'compile-and-run)
+    (list (list 'primitive compile-and-run))
+    (setup-environment)))
+```
+
+
+
+eceval内で使えるようにする
+
+```
+(define (compile-and-go expression)
+  (let ((instructions
+          (assemble (statements
+                      (compile expression 'val 'return))
+                    eceval)))
+       (set! the-global-environment (setup-c-and-r-environment)) ;; changed
+       (set-register-contents! eceval 'val instructions)
+       (set-register-contents! eceval 'flag true)
+       (start eceval)))
+
+;add
+(define (compile-and-run? proc)
+  (tagged-list? proc 'compile-and-run))
+
+;add
+(define (compile-and-run expression)
+  (let ((instructions
+          (assemble (statements
+                      (compile expression 'val 'return))
+                    eceval)))
+       (set-register-contents! eceval 'val instructions)
+       (set-register-contents! eceval 'flag true)
+       (start eceval)))
+```
+
+
+
+解釈部分
+
+```
+(define eceval-operations
+  (list (list 'self-evaluating? self-evaluating?)
+        ;; ...
+        (list 'compile-and-run? compile-and-run?)
+        (list 'compile-and-run compile-and-run)
+        ;; ...
+        ))
+
+(define eceval
+      ;; ...
+      ev-compile-and-run
+        (perform (op compile-and-run) (reg exp))
+        (goto (reg continue))
+      ;; ...
+      )))
+```
+
+
+
+
+
+実行結果
+
+```
+> (compile-and-go
+  '(define (square x) (* x x)))
+
+(total-pushes = 0 max-depth = 0)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(square 4)
+
+
+(total-pushes = 5 max-depth = 3)
+;;; EC-Eval value:
+16
+
+;;; EC-Eval input:
+(compile-and-run
+  '(define (factorial n)
+     (if (= n 1)
+         1
+         (* (factorial (- n 1)) n))))
+
+(total-pushes = 0 max-depth = 0)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(factorial 5) 
+
+(total-pushes = 31 max-depth = 14)
+;;; EC-Eval value:
+120
+
+;;; EC-Eval input:
+(define (factorial2 n)
+  (if (= n 1)
+      1
+      (* (factorial2 (- n 1)) n)))
+
+(total-pushes = 3 max-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(factorial2 5)
+
+(total-pushes = 144 max-depth = 28)
+;;; EC-Eval value:
+120
+
+;;; EC-Eval input:
+(compile-and-run
+  '(define (two-fact n)
+   (begin
+    (factorial 5)
+   (factorial2 5)
+))
+)
+
+(total-pushes = 0 max-depth = 0)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(two-fact 5)
+
+(total-pushes = 173 max-depth = 28)
+;;; EC-Eval value:
+120
+```
+
+
+
+# 5.49
+
+operationsに以下を追加
+
+```
+        (list 'make-register-machine make-register-machine)
+        (list 'compile compile)
+        (list 'statements statements)
+        (list 'assemble assemble)
+```
+
+
+
+レジスタ計算機
+
+```
+(define reg-machine
+  (make-machSine
+    '(exp env val proc argl continue unev compapp machine)
+    eceval-operations
+    '(
+        (assign machine (op make-register-machine))
+      read-eval-print-loop
+        (perform (op initialize-stack))
+        (perform
+          (op prompt-for-input) (const ";;; RM-Eval input:"))
+        (assign exp (op read))
+        (assign env (op get-global-environment))
+        (assign continue (label print-result))
+        (goto (label compile))
+      print-result
+        (perform (op print-stack-statistics))
+        (perform
+          (op announce-output) (const ";;; RM-Eval value:"))
+        (perform (op user-print) (reg val))
+        (goto (label read-eval-print-loop))
+      compile
+        (assign exp (op compile) (reg exp) (const val) (const return))
+        (assign exp (op statements) (reg exp))
+        (goto (label assemble))
+      assemble
+        (assign val (op assemble) (reg exp) (reg machine))
+        (goto (reg val))
+ )))
+```
+
